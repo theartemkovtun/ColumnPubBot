@@ -8,6 +8,7 @@ import messages
 from keyboards.menu_item import item_cb, menu_item_markup
 from keyboards.cart_item import cart_cb, cart_item_markup
 from functools import reduce
+import uuid
 
 bot = Bot(token=configuration.TOKEN, parse_mode=types.ParseMode.HTML)
 storage = MemoryStorage()
@@ -17,6 +18,7 @@ dp = Dispatcher(bot, storage=storage)
 @dp.message_handler(commands='start')
 async def cmd_start(message: types.Message):
     users.add_user({
+        "_id": str(uuid.uuid4()),
         "chat_id": message.chat.id,
         "fullname": message.chat.full_name
     })
@@ -53,6 +55,7 @@ async def add_product_callback_handler(query: types.CallbackQuery, callback_data
     cart = user_cart.get_user_cart(query.message.chat.id)
     if cart is None:
         user_cart.save_user_cart({
+            '_id': str(uuid.uuid4()),
             'chat_id': query.message.chat.id,
             'items': [item]
         })
