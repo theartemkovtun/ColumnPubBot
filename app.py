@@ -1,4 +1,4 @@
-from types import NoneType
+
 
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -253,7 +253,7 @@ async def cmd_not_confirm_address(message: types.Message):
 async def cmd_contact_us(message: types.Message):
     cart = user_cart.get_user_cart(message.chat.id)
 
-    if type(cart) == NoneType or not cart['items']:
+    if cart is None or not cart['items']:
         await message.answer('Кошик пустий')
         return
 
