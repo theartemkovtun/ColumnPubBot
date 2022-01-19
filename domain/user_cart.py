@@ -11,3 +11,7 @@ def save_user_cart(cart):
 def get_user_cart(chat_id):
     return DATABASE_CONNECTION[COLLECTION].find_one({"chat_id": chat_id})
 
+
+def delete_user_cart(chat_id):
+    return DATABASE_CONNECTION[COLLECTION].delete_one({"chat_id": chat_id})
+
