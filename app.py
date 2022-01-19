@@ -1,5 +1,7 @@
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 import configuration
 import os
 from domain import products, users, user_cart
@@ -20,7 +22,8 @@ async def cmd_start(message: types.Message):
     users.add_user({
         "_id": str(uuid.uuid4()),
         "chat_id": message.chat.id,
-        "fullname": message.chat.full_name
+        "fullname": message.chat.full_name,
+        '_address': ''
     })
 
     markup = ReplyKeyboardMarkup(selective=True)
@@ -52,12 +55,13 @@ async def cmd_menu(message: types.Message):
 @dp.callback_query_handler(item_cb.filter(action='add'))
 async def add_product_callback_handler(query: types.CallbackQuery, callback_data: dict):
     item = products.get_product(callback_data['id'])
+    item['_id'] = str(uuid.uuid4());
     cart = user_cart.get_user_cart(query.message.chat.id)
     if cart is None:
         user_cart.save_user_cart({
             '_id': str(uuid.uuid4()),
             'chat_id': query.message.chat.id,
-            'items': [item]
+            'items': [item],
         })
     else:
         cart['items'] = [*cart['items'], item]
@@ -71,9 +75,62 @@ async def cmd_contact_us(message: types.Message):
     await message.answer('Залиште Ваше повідомлення', reply_markup=None)
 
 
+class FSMAState(StatesGroup):
+    address = State()
+
+
+@dp.message_handler(text=messages.submit_order)
+async def cmd_submit_order(message: types.Message):
+    user = users.get_user(message.chat.id)
+    if users.check_user_has_address(user['_id']):
+        await FSMAState.address.set()
+        await message.reply('Адреса відсутня! \nВведіть адресу:', reply_markup=None)
+    else:
+        answer = 'Ваше замовлення: '
+        items = user_cart.get_user_cart(message.chat.id)['items']
+        cur_prods = products.get_products()
+        i=1
+        for prod in cur_prods:
+            prod_sum = sum(1 for item in items if item['name'] == prod['name'])
+            if prod_sum > 0:
+                answer = answer + '\n1) ' + str(prod['name']) + ' x' + str(prod_sum) + ';  '
+            i += 1
+        total_cost = reduce(lambda total, item: total + float(item['price']), items, 0)
+        answer = answer + f'\nЗагальна сума замовлення - {round(total_cost, 2)} грн \n'
+        answer = answer + f'Кур’єр доставить вам замовлення на {user["_address"]} \n'
+        answer = answer + f'Кур’єр зв’яжеться з вами. Смачного!'
+        await message.answer(answer, reply_markup=None)
+
+        user_cart.delete_user_cart(message.chat.id)
+        markup = ReplyKeyboardMarkup(selective=True)
+        markup.add(messages.menu)
+        markup.add(messages.contact_us)
+        markup.add(messages.cart)
+
+        await message.answer('Головна сторінка', reply_markup=markup)
+
+
+@dp.message_handler(state=FSMAState.address)
+async def cmd_add_address(message: types.Message, state: FSMContext):
+    user = users.get_user(message.chat.id)
+    user['_address'] = message.text
+    users.add_user(user)
+    await state.finish()
+
+    markup = ReplyKeyboardMarkup(selective=True)
+    markup.add(messages.back_to_home)
+    markup.add(messages.submit_order)
+    await message.answer(f'Адреса - {message.text} успішно додана', reply_markup=markup)
+
+
 @dp.message_handler(text=messages.cart)
 async def cmd_contact_us(message: types.Message):
     cart = user_cart.get_user_cart(message.chat.id)
+
+    if not cart['items']:
+        await message.answer('Кошик пустий')
+        return
+
     for item in cart['items']:
         markup = cart_item_markup(item)
         await message.answer_photo(photo=item['url'], caption=item['name'], reply_markup=markup)
@@ -124,3 +181,5 @@ if __name__ == '__main__':
     else:
         print("Bot has started")
         executor.start_polling(dp, on_startup=on_startup, skip_updates=False)
+
+
