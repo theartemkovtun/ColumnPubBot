@@ -12,6 +12,10 @@ def get_product(id):
     return DATABASE_CONNECTION[COLLECTION].find_one({"_id": id})
 
 
+def delete_product(id):
+    return DATABASE_CONNECTION[COLLECTION].delete_one({"_id": id})
+
+
 def add_product(product):
     DATABASE_CONNECTION[COLLECTION].replace_one({'_id': product['_id']}, product, upsert=True)
 

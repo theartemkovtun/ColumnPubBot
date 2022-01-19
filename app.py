@@ -10,6 +10,7 @@ from domain import products, users, user_cart, user_feedback
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
 import messages
 from keyboards.menu_item import item_cb, menu_item_markup
+from keyboards.all_items import all_items_markup
 from keyboards.cart_item import cart_cb, cart_item_markup
 from functools import reduce
 import uuid
@@ -17,24 +18,103 @@ import uuid
 bot = Bot(token=configuration.TOKEN, parse_mode=types.ParseMode.HTML)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
+new_item = {}
 
 
 @dp.message_handler(commands='start')
 async def cmd_start(message: types.Message):
-    users.add_user({
-        "_id": str(uuid.uuid4()),
-        "chat_id": message.chat.id,
-        "fullname": message.chat.full_name,
-        '_address': ''
-    })
+    if users.check_if_user_admin(message.chat.id):
+        markup = ReplyKeyboardMarkup(selective=True, one_time_keyboard=True)
+        markup.add(messages.add_item)
+        markup.add(messages.all_products)
 
-    markup = ReplyKeyboardMarkup(selective=True)
-    markup.add(messages.menu)
-    markup.add(messages.contact_us)
-    markup.add(messages.cart)
+        await message.answer(f'{message.chat.first_name}, '
+                f'Ласкаво просимо до ColumnPub чат боту. Ваша роль адмін', reply_markup=markup)
+    else:
+        users.add_user({
+            "_id": str(uuid.uuid4()),
+            "role": "2",
+            "chat_id": message.chat.id,
+            "fullname": message.chat.full_name,
+            '_address': ''
+        })
 
-    await message.answer(f'{message.chat.first_name}, '
-                         f'Ласкаво просимо до ColumnPub чат боту. Дякуємо, що обрали наш ресторан', reply_markup=markup)
+        markup = ReplyKeyboardMarkup(selective=True)
+        markup.add(messages.menu)
+        markup.add(messages.contact_us)
+        markup.add(messages.cart)
+
+        await message.answer(f'{message.chat.first_name}, '
+                f'Ласкаво просимо до ColumnPub чат боту. Дякуємо, що обрали наш ресторан', reply_markup=markup)
+
+
+class Add_New_Items(StatesGroup):
+    addName = State()
+    addPhoto = State()
+    addPrice = State()
+    confirm = State()
+
+
+@dp.message_handler(text=messages.add_item)
+async def cmd_add_item(message: types.Message):
+    if users.check_if_user_admin(message.chat.id):
+        await Add_New_Items.addName.set()
+        await message.answer('Введіть назву товару:', reply_markup=None)
+
+
+@dp.message_handler(state=Add_New_Items.addName)
+async def cmd_addName(message: types.Message):
+    if users.check_if_user_admin(message.chat.id):
+        new_item['name'] = message.text
+        await Add_New_Items.addPhoto.set()
+        await message.answer('Додайте посилання на фото товару', reply_markup=None)
+
+
+@dp.message_handler(state=Add_New_Items.addPhoto)
+async def cmd_add_photo(message: types.Message):
+    if users.check_if_user_admin(message.chat.id):
+        new_item['url'] = message.text
+        await Add_New_Items.addPrice.set()
+        await message.answer('Додайте ціну товару', reply_markup=None)
+
+
+@dp.message_handler(state=Add_New_Items.addPrice)
+async def cmd_add_price(message: types.Message):
+    if users.check_if_user_admin(message.chat.id):
+        if not message.text.isnumeric():
+            await Add_New_Items.addPrice.set()
+            await message.answer('Додайте іншу ціну товару', reply_markup=None)
+            return
+        new_item['price'] = int(message.text)
+        new_item['_id'] = str(uuid.uuid4())
+        markup = menu_item_markup(new_item)
+        await message.answer_photo(photo=new_item['url'], caption=new_item['name'], reply_markup=markup)
+        markup = ReplyKeyboardMarkup(selective=True, one_time_keyboard=True)
+        markup.add(messages.yes)
+        markup.add(messages.no)
+        await Add_New_Items.confirm.set()
+        await message.answer('Підтвердіть додавання нового товару', reply_markup=markup)
+
+
+@dp.message_handler(state=Add_New_Items.confirm)
+async def cmd_confirm(message: types.Message, state: FSMContext):
+    if users.check_if_user_admin(message.chat.id):
+        if message.text == messages.yes:
+            products.add_product(new_item)
+
+            markup = ReplyKeyboardMarkup(selective=True, one_time_keyboard=True)
+            markup.add(messages.add_item)
+            markup.add(messages.all_products)
+
+            await message.answer('Товар успішно додано', reply_markup=markup)
+        elif message.text == messages.no:
+            markup = ReplyKeyboardMarkup(selective=True, one_time_keyboard=True)
+            markup.add(messages.add_item)
+            markup.add(messages.all_products)
+
+            dict.clear(new_item)
+            await message.answer('Товар видалено', reply_markup=markup)
+        await state.finish()
 
 
 @dp.message_handler(text=messages.back_to_home)
@@ -46,6 +126,7 @@ async def cmd_menu(message: types.Message):
 
     await message.answer('Головна сторінка', reply_markup=markup)
 
+
 @dp.message_handler(text=messages.menu)
 async def cmd_menu(message: types.Message):
     all_items = products.get_products()
@@ -54,10 +135,27 @@ async def cmd_menu(message: types.Message):
         await message.answer_photo(photo=item['url'], caption=item['name'], reply_markup=markup)
 
 
+@dp.message_handler(text=messages.all_products)
+async def cmd_menu(message: types.Message):
+    all_items = products.get_products()
+    for item in all_items:
+        markup = all_items_markup(item)
+        await message.answer_photo(photo=item['url'], caption=f'{item["name"]} - {item["price"]} грн', reply_markup=markup)
+
+
+@dp.callback_query_handler(item_cb.filter(action='delete_product'))
+async def add_product_callback_handler(query: types.CallbackQuery, callback_data):
+    item_id = callback_data['id']
+    products.delete_product(item_id)
+
+    await query.answer('Товар видалено')
+
+
+
 @dp.callback_query_handler(item_cb.filter(action='add'))
 async def add_product_callback_handler(query: types.CallbackQuery, callback_data: dict):
     item = products.get_product(callback_data['id'])
-    item['_id'] = str(uuid.uuid4());
+    item['_id'] = str(uuid.uuid4())
     cart = user_cart.get_user_cart(query.message.chat.id)
     if cart is None:
         user_cart.save_user_cart({
@@ -102,6 +200,7 @@ async def cmd_add_address(message: types.Message, state: FSMContext):
     markup.add(messages.back_to_home)
     await message.answer(f'Відгук - "{message.text}" успішно доданий', reply_markup=markup)
 
+
 @dp.message_handler(text=messages.submit_order)
 async def cmd_submit_order(message: types.Message):
     user = users.get_user(message.chat.id)
@@ -109,7 +208,7 @@ async def cmd_submit_order(message: types.Message):
         await FSMAState.address.set()
         await message.reply('Адреса відсутня! \nВведіть адресу:', reply_markup=None)
     else:
-        markup = ReplyKeyboardMarkup(selective=True)
+        markup = ReplyKeyboardMarkup(selective=True, one_time_keyboard=True)
         markup.add(messages.yes)
         markup.add(messages.no)
 
@@ -196,6 +295,7 @@ async def add_product_callback_handler(query: types.CallbackQuery, callback_data
 
 async def on_startup(dp):
     products.populate_products()
+    users.add_admin()
     await bot.delete_webhook()
     await bot.set_webhook(configuration.WEBHOOK_URL)
 
