@@ -1,2 +1,12 @@
-/venv/
-venv/Scripts/python.exe
+# Cache files
+__pycache__/
+
+# Project files
+.idea/
+*.log
+.env
+*.session
+
+# vscode
+.vscode/
+.history/
