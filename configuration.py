@@ -1,4 +1,4 @@
-TOKEN = ""
+TOKEN = "5035420243:AAH7J-tx7jouOdNnXri2RkrJuXopjLq4N_0"
 
 PROJECT_NAME = 'column-pub-bot'
 
