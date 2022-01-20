@@ -307,19 +307,7 @@ async def on_shutdown():
 
 
 if __name__ == '__main__':
-
-    if "HEROKU" in list(os.environ.keys()):
-        executor.start_webhook(
-            dispatcher=dp,
-            webhook_path=configuration.WEBHOOK_PATH,
-            skip_updates=True,
-            on_startup=on_startup,
-            on_shutdown=on_shutdown,
-            host="",
-            port="",
-        )
-    else:
-        print("Bot has started")
-        executor.start_polling(dp, on_startup=on_startup, skip_updates=False)
+    print("Bot has started")
+    executor.start_polling(dp, on_startup=on_startup, skip_updates=False)
 
 
